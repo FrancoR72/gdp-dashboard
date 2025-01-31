@@ -1,0 +1,70 @@
+import pandas as pd
+from scipy.spatial.distance import mahalanobis
+import scipy as sp
+from google.colab import files
+import io
+import numpy as np
+
+# Funzione per gestire i valori mancanti
+def handle_missing_values(data, strategy):
+    if strategy == 1:
+        # Assegna zero
+        data.fillna(0, inplace=True)
+    elif strategy == 2:
+        # Assegna la media
+        data.fillna(data.mean(), inplace=True)
+    elif strategy == 3:
+        # Assegna la mediana
+        data.fillna(data.median(), inplace=True)
+    elif strategy == 4:
+        # Assegna un terzo del valore minimo
+        data.fillna(data.min() / 3, inplace=True)
+
+# Upload del file
+uploaded = files.upload()
+file_name = next(iter(uploaded))
+data = pd.read_excel(io.BytesIO(uploaded[file_name]))
+
+# Preparazione dei dati
+data_variables = data.iloc[:, 2:]  # selezioniamo solo le colonne delle variabili
+
+# Chiediamo all'utente di scegliere una strategia per i valori mancanti
+print("Scegli una strategia per gestire i valori mancanti:")
+print("1: Assegna zero")
+print("2: Assegna la media dei valori per quella variabile")
+print("3: Assegna la mediana dei valori per quella variabile")
+print("4: Assegna 1/3 del valore minimo assunto da quella variabile")
+strategy = int(input("Inserisci il numero della strategia desiderata: "))
+handle_missing_values(data_variables, strategy)
+
+# Opzione per la regolarizzazione
+apply_regularization = input("Vuoi applicare la regolarizzazione di Tikhonov? (s/n): ").lower()
+if apply_regularization == 's':
+    ridge_value = float(input("Inserisci il valore del coefficiente di regolarizzazione (ad es. 0.01): "))
+    ridge_factor = ridge_value * np.eye(data_variables.shape[1])
+else:
+    ridge_factor = np.zeros((data_variables.shape[1], data_variables.shape[1]))
+
+# Calcolo della media e della matrice di covarianza
+mean = data_variables.mean()
+cov_matrix = data_variables.cov()
+# Calcolo del numero di condizionamento
+cond_number = np.linalg.cond(cov_matrix)
+print(f"Numero di condizionamento della matrice di covarianza: {cond_number}")
+
+inv_cov_matrix = sp.linalg.inv(cov_matrix + ridge_factor)
+
+# Funzione per calcolare la Distanza di Mahalanobis
+def mahalanobis_distance(x, mean, inv_cov_matrix):
+    x_minus_mu = x - mean
+    left_term = np.dot(x_minus_mu, inv_cov_matrix)
+    mahal = np.dot(left_term, x_minus_mu.T)
+    return mahal.diagonal()
+
+# Calcolo della Distanza di Mahalanobis per ogni osservazione
+data['Mahalanobis'] = mahalanobis_distance(data_variables, mean, inv_cov_matrix)
+
+# Visualizzazione e download dei risultati
+print(data[['Mahalanobis']])
+data.to_excel("output_mahalanobis.xlsx")
+files.download("output_mahalanobis.xlsx")
